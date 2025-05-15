@@ -38,7 +38,7 @@ const Demo: React.FC = () => {
   const onClose = () => setShowDottedFace(true);
 
   return (
-    <div className="min-h-screen w-full bg-gradient-to-br via-black-900 to-gray-900 flex flex-col items-center text-white font-abc-repro p-6">
+    <div className="bg-black min-h-screen w-full flex flex-col items-center text-white font-abc-repro p-6">
       <SimliHeaderLogo />
 
       <div className="absolute top-8 right-8">
