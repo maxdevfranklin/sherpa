@@ -1,96 +1,87 @@
 "use client";
-import React, { use, useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import SimliOpenAI from "./SimliOpenAI";
 import DottedFace from "./Components/DottedFace";
 import SimliHeaderLogo from "./Components/Logo";
-import Navbar from "./Components/Navbar";
 import Image from "next/image";
 import GitHubLogo from "@/media/github-mark-white.svg";
 
 interface avatarSettings {
   name: string;
-  openai_voice: "alloy"|"ash"|"ballad"|"coral"|"echo"|"sage"|"shimmer"|"verse";
+  openai_voice:
+    | "alloy"
+    | "ash"
+    | "ballad"
+    | "coral"
+    | "echo"
+    | "sage"
+    | "shimmer"
+    | "verse";
   openai_model: string;
   simli_faceid: string;
   initialPrompt: string;
 }
 
-// Customize your avatar here
 const avatar: avatarSettings = {
   name: "Frank",
-  openai_voice: "echo",
-  openai_model: "gpt-4o-mini-realtime-preview-2024-12-17", // Use "gpt-4o-mini-realtime-preview-2024-12-17" for cheaper and faster responses
-  simli_faceid: "6ebf0aa7-6fed-443d-a4c6-fd1e3080b215",
+  openai_voice: "coral",
+  openai_model: "gpt-4o-mini-realtime-preview-2024-12-17",
+  simli_faceid: "b3619dad-843e-440e-8bcb-970c4c2aec70",
   initialPrompt:
-    "You are a helpful AI assistant named Frank. You are friendly and concise in your responses. Your task is to help users with any questions they might have. Your answers are short and to the point, don't give long answers be brief and straightforward.",
+    "You are a trusted Sherpa-style guide helping families navigate emotional and complex decisions about senior living. Your role is to ask warm, open-ended questions to understand their story, build trust, and offer supportive insights—not to sell. Start conversations with a friendly tone like:'I’d be happy to get you the information you need, but before I do, do you mind if I ask a few quick questions? That way, I can really understand what’s important and make sure I’m helping in the best way possible.' Then proceed to gently explore their motivations, concerns, lifestyle, and priorities.",
 };
 
 const Demo: React.FC = () => {
   const [showDottedFace, setShowDottedFace] = useState(true);
 
-  const onStart = () => {
-    console.log("Setting setshowDottedface to false...");
-    setShowDottedFace(false);
-  };
-
-  const onClose = () => {
-    console.log("Setting setshowDottedface to true...");
-    setShowDottedFace(true);
-  };
+  const onStart = () => setShowDottedFace(false);
+  const onClose = () => setShowDottedFace(true);
 
   return (
-    <div className="bg-black min-h-screen flex flex-col items-center font-abc-repro font-normal text-sm text-white p-8">
+    <div className="min-h-screen w-full bg-gradient-to-br via-black-900 to-gray-900 flex flex-col items-center text-white font-abc-repro p-6">
       <SimliHeaderLogo />
-      <Navbar />
-      <div className="absolute top-[32px] right-[32px]">
-        <text
-          onClick={() => {
-            window.open("https://github.com/simliai/create-simli-app-openai");
-          }}
-          className="font-bold cursor-pointer mb-8 text-xl leading-8"
+
+      <div className="absolute top-8 right-8">
+        {/* Optional GitHub link */}
+        {/* 
+        <span
+          onClick={() => window.open("https://github.com/simliai/create-simli-app-openai")}
+          className="cursor-pointer font-semibold text-base hover:underline"
         >
-          <Image className="w-[20px] inline mr-2" src={GitHubLogo} alt="" />
-          create-simli-app (OpenAI)
-        </text>
-      </div>
-      <div className="flex flex-col items-center gap-6 bg-effect15White p-6 pb-[40px] rounded-xl w-full">
-        <div>
-          {showDottedFace && <DottedFace />}
-          <SimliOpenAI
-            openai_voice={avatar.openai_voice}
-            openai_model={avatar.openai_model}
-            simli_faceid={avatar.simli_faceid}
-            initialPrompt={avatar.initialPrompt}
-            onStart={onStart}
-            onClose={onClose}
-            showDottedFace={showDottedFace}
-          />
-        </div>
+          <Image className="w-[20px] inline mr-2" src={GitHubLogo} alt="GitHub" />
+          create-simli-app
+        </span>
+        */}
       </div>
 
-      <div className="max-w-[350px] font-thin flex flex-col items-center ">
-        <span className="font-bold mb-[8px] leading-5 ">
-          {" "}
-          Create Simli App is a starter repo for creating visual avatars with
-          Simli{" "}
-        </span>
-        <ul className="list-decimal list-inside max-w-[350px] ml-[6px] mt-2">
-          <li className="mb-1">
-            Fill in your OpenAI and Simli API keys in .env file.
+      <div className="flex flex-col items-center gap-6 bg-white/10 border border-white/20 shadow-lg backdrop-blur-sm p-8 rounded-2xl w-full max-w-3xl mt-10">
+        {showDottedFace && <DottedFace />}
+        <SimliOpenAI
+          openai_voice={avatar.openai_voice}
+          openai_model={avatar.openai_model}
+          simli_faceid={avatar.simli_faceid}
+          initialPrompt={avatar.initialPrompt}
+          onStart={onStart}
+          onClose={onClose}
+          showDottedFace={showDottedFace}
+        />
+      </div>
+
+      <div className="mt-10 text-center max-w-sm text-sm">
+        <h2 className="text-lg font-bold mb-2">I am Sherpa</h2>
+        <ul className="list-disc list-inside space-y-2 text-white/90">
+          <li>
+            I will guide the family through one of the most important journeys
+            of their life.
           </li>
-          <li className="mb-1">
-            Test out the interaction and have a talk with the OpenAI-powered,
-            Simli-visualized avatar.
-          </li>
-          <li className="mb-1">
-            You can replace the avatar's face and prompt with your own. Do this
-            by editing <code>app/page.tsx</code>.
+          <li>
+            I am ready to provide the insights, support, and confidence you need
+            to take the next step.
           </li>
         </ul>
-        <span className=" mt-[16px]">
-          You can now deploy this app to Vercel, or incorporate it as part of
-          your existing project.
-        </span>
+        <p className="mt-4 text-white/70 italic">
+          Let’s start a meaningful conversation.
+        </p>
       </div>
     </div>
   );

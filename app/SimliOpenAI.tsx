@@ -7,7 +7,15 @@ import cn from "./utils/TailwindMergeAndClsx";
 
 interface SimliOpenAIProps {
   simli_faceid: string;
-  openai_voice: "alloy"|"ash"|"ballad"|"coral"|"echo"|"sage"|"shimmer"|"verse";
+  openai_voice:
+    | "alloy"
+    | "ash"
+    | "ballad"
+    | "coral"
+    | "echo"
+    | "sage"
+    | "shimmer"
+    | "verse";
   openai_model: string;
   initialPrompt: string;
   onStart: () => void;
@@ -103,7 +111,6 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
       );
       // openAIClientRef.current.on('response.canceled', handleResponseCanceled);
 
-      
       await openAIClientRef.current.connect().then(() => {
         console.log("OpenAI Client connected successfully");
         openAIClientRef.current?.createResponse();
@@ -429,7 +436,7 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
               <IconSparkleLoader className="h-[20px] animate-loader" />
             ) : (
               <span className="font-abc-repro-mono font-bold w-[164px]">
-                Test Interaction
+                Start Conversation
               </span>
             )}
           </button>

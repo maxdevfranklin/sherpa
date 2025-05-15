@@ -1,13 +1,12 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
-import { abcRepro, abcReproMono } from './fonts/fonts';
+import { abcRepro, abcReproMono } from "./fonts/fonts";
 import "./globals.css";
-
 
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Simli App",
+  title: "Sherpa",
   description: "create-simli-app (OpenAI)",
 };
 
