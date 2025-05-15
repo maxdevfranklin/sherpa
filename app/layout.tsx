@@ -7,7 +7,7 @@ const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "Sherpa",
-  description: "create-simli-app (OpenAI)",
+  description: "43rd Big Idea",
 };
 
 export default function RootLayout({
