@@ -2,7 +2,7 @@
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import React from "react";
-import logo from "@/media/SimliLogoV2.svg";
+import logo from "@/media/desc-family.svg";
 import cn from "@/app/utils/TailwindMergeAndClsx";
 
 interface Props {
@@ -28,7 +28,7 @@ const SimliHeaderLogo = ({ className, children }: Props) => {
       className={cn("fixed top-[32px] left-[32px] cursor-pointer", className)}
       onClick={handleClick}
     >
-      <Image src={logo} className="Logo" alt="Simli logo" />
+      <Image src={logo} className="Logo" alt="Simli logo" width="50" />
     </div>
   );
 };
