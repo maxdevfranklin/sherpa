@@ -450,7 +450,7 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
                 )}
               >
                 <span className="font-abc-repro-mono group-hover:text-black font-bold w-[164px] transition-all duration-300">
-                  Stop Interaction
+                  Stop Conversation
                 </span>
               </button>
             </div>
