@@ -5,6 +5,7 @@ import VideoBox from "./Components/VideoBox";
 import cn from "./utils/TailwindMergeAndClsx";
 import { getMessageUrl } from "@/src/config/api";
 import axios from "axios";
+import { createDeepgramService, DeepgramService, TranscriptionResult } from "@/src/services/deepgram";
 
 interface SimliOpenAIProps {
   simli_faceid: string;
@@ -50,8 +51,8 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const isFirstRun = useRef(true);
   
-  // Speech recognition refs
-  const recognitionRef = useRef<any>(null);
+  // Deepgram service ref
+  const deepgramServiceRef = useRef<DeepgramService | null>(null);
   const userIdRef = useRef<string>(`video_user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`);
   
   // New refs for managing audio chunk delay
@@ -175,95 +176,91 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
   }, [textToSpeech]);
 
   /**
-   * Initializes speech recognition for user input
+   * Initializes Deepgram speech recognition for user input
    */
-  const initializeSpeechRecognition = useCallback(() => {
+  const initializeSpeechRecognition = useCallback(async () => {
     try {
-      console.log("Initializing speech recognition...");
+      console.log("Initializing Deepgram speech recognition...");
       
-      // Check for browser support
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      
-      if (!SpeechRecognition) {
-        console.warn("Speech recognition not supported, falling back to microphone recording");
-        return;
+      // Check if Deepgram API key is available
+      const deepgramApiKey = process.env.NEXT_PUBLIC_DEEPGRAM_API_KEY;
+      if (!deepgramApiKey) {
+        throw new Error("Deepgram API key not found. Please set NEXT_PUBLIC_DEEPGRAM_API_KEY in your environment variables.");
       }
       
-      recognitionRef.current = new SpeechRecognition();
-      recognitionRef.current.continuous = true;
-      recognitionRef.current.interimResults = true;
-      recognitionRef.current.lang = 'en-US';
-      
-      recognitionRef.current.onresult = async (event: any) => {
-        // Only process final results
-        const result = event.results[event.results.length - 1];
-        
-        if (result.isFinal) {
-          const transcript = result[0].transcript;
-          console.log("User said:", transcript);
-          setUserMessage(transcript);
-          
-          // Don't process if avatar is speaking
-          if (isSpeakingRef.current) {
-            console.log("Avatar is speaking, ignoring user input");
-            return;
-          }
-          
-          try {
-            // Send to backend
-            const responseText = await sendMessageToBackend(transcript);
+      // Create Deepgram service
+      deepgramServiceRef.current = createDeepgramService(
+        deepgramApiKey,
+        {
+          onTranscription: async (result: TranscriptionResult) => {
+            console.log("Deepgram transcription:", result);
             
-            // Process the response
-            await processBackendResponse(responseText);
-          } catch (error) {
-            console.error("Error processing user speech:", error);
-            setError("Failed to process your message. Please try again.");
-          }
-        } else {
-          // Show interim results
-          const interim = result[0].transcript;
-          setUserMessage(interim + "...");
+            // Update UI with transcript
+            setUserMessage(result.transcript + (result.isFinal ? "" : "..."));
+            
+            // Only process final results with sufficient confidence
+            if (result.isFinal && result.confidence > 0.7) {
+              console.log("Processing final transcription:", result.transcript);
+              
+              // Don't process if avatar is speaking
+              if (isSpeakingRef.current) {
+                console.log("Avatar is speaking, ignoring user input");
+                return;
+              }
+              
+              try {
+                // Send to backend
+                const responseText = await sendMessageToBackend(result.transcript);
+                
+                // Process the response
+                await processBackendResponse(responseText);
+              } catch (error) {
+                console.error("Error processing user speech:", error);
+                setError("Failed to process your message. Please try again.");
+              }
+            }
+          },
+          onError: (error: Error) => {
+            console.error("Deepgram error:", error);
+            setError(`Speech recognition error: ${error.message}`);
+          },
+          onConnectionChange: (connected: boolean) => {
+            console.log("Deepgram connection status:", connected);
+            if (connected) {
+              setIsRecording(true);
+              setIsAvatarVisible(true);
+              
+              // Send initial greeting after a short delay
+              if (isFirstRun.current) {
+                isFirstRun.current = false;
+                setTimeout(async () => {
+                  const greeting = "Hello! How can I help you today?";
+                  await processBackendResponse(greeting);
+                }, 1000);
+              }
+            } else {
+              setIsRecording(false);
+            }
+          },
+        },
+        {
+          model: 'nova-2',
+          language: 'en-US',
+          sampleRate: 16000,
+          channels: 1,
+          encoding: 'linear16',
         }
-      };
+      );
       
-      recognitionRef.current.onerror = (event: any) => {
-        console.error("Speech recognition error:", event.error);
-        if (event.error === 'no-speech') {
-          console.log("No speech detected, continuing...");
-        }
-      };
+      // Start the Deepgram service
+      await deepgramServiceRef.current.start();
+      console.log("Deepgram speech recognition started");
       
-      recognitionRef.current.onend = () => {
-        // Restart recognition if still recording
-        if (isRecording) {
-          try {
-            recognitionRef.current?.start();
-          } catch (err) {
-            console.log("Recognition restart error (expected if already running)");
-          }
-        }
-      };
-      
-      // Start recognition
-      recognitionRef.current.start();
-      console.log("Speech recognition started");
-      setIsRecording(true);
-      
-      // Send initial greeting after a short delay
-      if (isFirstRun.current) {
-        isFirstRun.current = false;
-        setTimeout(async () => {
-          const greeting = "Hello! How can I help you today?";
-          await processBackendResponse(greeting);
-        }, 1000);
-      }
-      
-      setIsAvatarVisible(true);
     } catch (error: any) {
-      console.error("Error initializing speech recognition:", error);
+      console.error("Error initializing Deepgram speech recognition:", error);
       setError(`Failed to initialize speech recognition: ${error.message}`);
     }
-  }, [sendMessageToBackend, processBackendResponse, isRecording]);
+  }, [sendMessageToBackend, processBackendResponse]);
 
   /**
    * Processes the next audio chunk in the queue.
@@ -414,13 +411,13 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
   /**
    * Stops speech recognition and releases microphone
    */
-  const stopRecording = useCallback(() => {
-    if (recognitionRef.current) {
+  const stopRecording = useCallback(async () => {
+    if (deepgramServiceRef.current) {
       try {
-        recognitionRef.current.stop();
-        recognitionRef.current = null;
+        await deepgramServiceRef.current.stop();
+        deepgramServiceRef.current = null;
       } catch (err) {
-        console.log("Error stopping recognition:", err);
+        console.log("Error stopping Deepgram service:", err);
       }
     }
     if (streamRef.current) {
@@ -485,12 +482,12 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
    */
   const eventListenerSimli = useCallback(() => {
     if (simliClient) {
-      simliClient?.on("connected", () => {
+      simliClient?.on("connected", async () => {
         console.log("SimliClient connected");
         setIsAvatarVisible(true);
         setIsLoading(false);
         // Initialize speech recognition
-        initializeSpeechRecognition();
+        await initializeSpeechRecognition();
       });
 
       simliClient?.on("disconnected", () => {
