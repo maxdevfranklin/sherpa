@@ -1,9 +1,10 @@
 import IconSparkleLoader from "@/media/IconSparkleLoader";
-import { RealtimeClient } from "@openai/realtime-api-beta";
 import React, { useCallback, useRef, useState } from "react";
 import { SimliClient } from "simli-client";
 import VideoBox from "./Components/VideoBox";
 import cn from "./utils/TailwindMergeAndClsx";
+import { getMessageUrl } from "@/src/config/api";
+import axios from "axios";
 
 interface SimliOpenAIProps {
   simli_faceid: string;
@@ -44,15 +45,19 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
   // Refs for various components and states
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
-  const openAIClientRef = useRef<RealtimeClient | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const isFirstRun = useRef(true);
-
+  
+  // Speech recognition refs
+  const recognitionRef = useRef<any>(null);
+  const userIdRef = useRef<string>(`video_user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`);
+  
   // New refs for managing audio chunk delay
   const audioChunkQueueRef = useRef<Int16Array[]>([]);
   const isProcessingChunkRef = useRef(false);
+  const isSpeakingRef = useRef(false);
 
   /**
    * Initializes the Simli client with the provided configuration.
@@ -76,83 +81,189 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
   }, [simli_faceid]);
 
   /**
-   * Initializes the OpenAI client, sets up event listeners, and connects to the API.
+   * Sends a text message to the backend and gets a response
    */
-  const initializeOpenAIClient = useCallback(async () => {
+  const sendMessageToBackend = useCallback(async (text: string) => {
     try {
-      console.log("Initializing OpenAI client...");
-      openAIClientRef.current = new RealtimeClient({
-        model: openai_model,
-        apiKey: process.env.NEXT_PUBLIC_OPENAI_API_KEY,
-        dangerouslyAllowAPIKeyInBrowser: true,
+      console.log("Sending message to backend:", text);
+      const response = await axios.post(getMessageUrl(), {
+        text: text,
+        userId: userIdRef.current,
+        userName: userIdRef.current,
       });
 
-      await openAIClientRef.current.updateSession({
-        instructions: initialPrompt,
-        voice: openai_voice,
-        turn_detection: { type: "server_vad" },
-        input_audio_transcription: { model: "whisper-1" },
-      });
-
-      // Set up event listeners
-      openAIClientRef.current.on(
-        "conversation.updated",
-        handleConversationUpdate
-      );
-
-      openAIClientRef.current.on(
-        "conversation.interrupted",
-        interruptConversation
-      );
-
-      openAIClientRef.current.on(
-        "input_audio_buffer.speech_stopped",
-        handleSpeechStopped
-      );
-      // openAIClientRef.current.on('response.canceled', handleResponseCanceled);
-
-      await openAIClientRef.current.connect().then(() => {
-        console.log("OpenAI Client connected successfully");
-        openAIClientRef.current?.createResponse();
-        startRecording();
-      });
-
-      setIsAvatarVisible(true);
-    } catch (error: any) {
-      console.error("Error initializing OpenAI client:", error);
-      setError(`Failed to initialize OpenAI client: ${error.message}`);
-    }
-  }, [initialPrompt]);
-
-  /**
-   * Handles conversation updates, including user and assistant messages.
-   */
-  const handleConversationUpdate = useCallback((event: any) => {
-    console.log("Conversation updated:", event);
-    const { item, delta } = event;
-
-    if (item.type === "message" && item.role === "assistant") {
-      console.log("Assistant message detected");
-      if (delta && delta.audio) {
-        const downsampledAudio = downsampleAudio(delta.audio, 24000, 16000);
-        audioChunkQueueRef.current.push(downsampledAudio);
-        if (!isProcessingChunkRef.current) {
-          processNextAudioChunk();
-        }
+      if (response.data && Array.isArray(response.data) && response.data.length > 0) {
+        const lastResponse = response.data[response.data.length - 1];
+        const responseText = lastResponse.text || "Sorry, I didn't catch that.";
+        
+        console.log("Backend response:", responseText);
+        return responseText;
       }
-    } else if (item.type === "message" && item.role === "user") {
-      setUserMessage(item.content[0].transcript);
+      return "Sorry, I didn't get a response.";
+    } catch (error: any) {
+      console.error("Error sending message to backend:", error);
+      throw error;
     }
   }, []);
 
   /**
-   * Handles interruptions in the conversation flow.
+   * Converts text to speech using OpenAI TTS API and returns audio buffer
    */
-  const interruptConversation = () => {
-    console.warn("User interrupted the conversation");
-    simliClient?.ClearBuffer();
-    openAIClientRef.current?.cancelResponse("");
-  };
+  const textToSpeech = useCallback(async (text: string): Promise<ArrayBuffer> => {
+    try {
+      console.log("Converting text to speech...");
+      const response = await fetch('https://api.openai.com/v1/audio/speech', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.NEXT_PUBLIC_OPENAI_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'tts-1',
+          voice: openai_voice,
+          input: text,
+          response_format: 'pcm',
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`TTS API error: ${response.statusText}`);
+      }
+
+      const audioBuffer = await response.arrayBuffer();
+      console.log("Text-to-speech conversion complete");
+      return audioBuffer;
+    } catch (error: any) {
+      console.error("Error in text-to-speech:", error);
+      throw error;
+    }
+  }, [openai_voice]);
+
+  /**
+   * Processes the backend response: converts text to speech and sends to Simli
+   */
+  const processBackendResponse = useCallback(async (responseText: string) => {
+    try {
+      isSpeakingRef.current = true;
+      
+      // Get audio from TTS
+      const audioBuffer = await textToSpeech(responseText);
+      
+      // Convert ArrayBuffer to Int16Array (assuming 24000 Hz PCM from OpenAI)
+      const audioData = new Int16Array(audioBuffer);
+      
+      // Downsample from 24000 Hz to 16000 Hz for Simli
+      const downsampledAudio = downsampleAudio(audioData, 24000, 16000);
+      
+      // Split audio into chunks and queue them
+      const chunkSize = 4800; // ~300ms chunks at 16000 Hz
+      for (let i = 0; i < downsampledAudio.length; i += chunkSize) {
+        const chunk = downsampledAudio.slice(i, i + chunkSize);
+        audioChunkQueueRef.current.push(chunk);
+      }
+      
+      // Start processing chunks
+      if (!isProcessingChunkRef.current) {
+        processNextAudioChunk();
+      }
+      
+      isSpeakingRef.current = false;
+    } catch (error: any) {
+      console.error("Error processing backend response:", error);
+      isSpeakingRef.current = false;
+    }
+  }, [textToSpeech]);
+
+  /**
+   * Initializes speech recognition for user input
+   */
+  const initializeSpeechRecognition = useCallback(() => {
+    try {
+      console.log("Initializing speech recognition...");
+      
+      // Check for browser support
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      
+      if (!SpeechRecognition) {
+        console.warn("Speech recognition not supported, falling back to microphone recording");
+        return;
+      }
+      
+      recognitionRef.current = new SpeechRecognition();
+      recognitionRef.current.continuous = true;
+      recognitionRef.current.interimResults = true;
+      recognitionRef.current.lang = 'en-US';
+      
+      recognitionRef.current.onresult = async (event: any) => {
+        // Only process final results
+        const result = event.results[event.results.length - 1];
+        
+        if (result.isFinal) {
+          const transcript = result[0].transcript;
+          console.log("User said:", transcript);
+          setUserMessage(transcript);
+          
+          // Don't process if avatar is speaking
+          if (isSpeakingRef.current) {
+            console.log("Avatar is speaking, ignoring user input");
+            return;
+          }
+          
+          try {
+            // Send to backend
+            const responseText = await sendMessageToBackend(transcript);
+            
+            // Process the response
+            await processBackendResponse(responseText);
+          } catch (error) {
+            console.error("Error processing user speech:", error);
+            setError("Failed to process your message. Please try again.");
+          }
+        } else {
+          // Show interim results
+          const interim = result[0].transcript;
+          setUserMessage(interim + "...");
+        }
+      };
+      
+      recognitionRef.current.onerror = (event: any) => {
+        console.error("Speech recognition error:", event.error);
+        if (event.error === 'no-speech') {
+          console.log("No speech detected, continuing...");
+        }
+      };
+      
+      recognitionRef.current.onend = () => {
+        // Restart recognition if still recording
+        if (isRecording) {
+          try {
+            recognitionRef.current?.start();
+          } catch (err) {
+            console.log("Recognition restart error (expected if already running)");
+          }
+        }
+      };
+      
+      // Start recognition
+      recognitionRef.current.start();
+      console.log("Speech recognition started");
+      setIsRecording(true);
+      
+      // Send initial greeting after a short delay
+      if (isFirstRun.current) {
+        isFirstRun.current = false;
+        setTimeout(async () => {
+          const greeting = "Hello! How can I help you today?";
+          await processBackendResponse(greeting);
+        }, 1000);
+      }
+      
+      setIsAvatarVisible(true);
+    } catch (error: any) {
+      console.error("Error initializing speech recognition:", error);
+      setError(`Failed to initialize speech recognition: ${error.message}`);
+    }
+  }, [sendMessageToBackend, processBackendResponse, isRecording]);
 
   /**
    * Processes the next audio chunk in the queue.
@@ -182,12 +293,6 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
     }
   }, []);
 
-  /**
-   * Handles the end of user speech.
-   */
-  const handleSpeechStopped = useCallback((event: any) => {
-    console.log("Speech stopped event received", event);
-  }, []);
 
   /**
    * Applies a simple low-pass filter to prevent aliasing of audio
@@ -289,65 +394,41 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
   };
 
   /**
-   * Starts audio recording from the user's microphone.
+   * Requests microphone permissions for speech recognition.
    */
-  const startRecording = useCallback(async () => {
-    if (!audioContextRef.current) {
-      audioContextRef.current = new AudioContext({ sampleRate: 24000 });
-    }
-
+  const requestMicrophonePermission = useCallback(async () => {
     try {
-      console.log("Starting audio recording...");
+      console.log("Requesting microphone permission...");
       streamRef.current = await navigator.mediaDevices.getUserMedia({
         audio: true,
       });
-      const source = audioContextRef.current.createMediaStreamSource(
-        streamRef.current
-      );
-      processorRef.current = audioContextRef.current.createScriptProcessor(
-        2048,
-        1,
-        1
-      );
-
-      processorRef.current.onaudioprocess = (e) => {
-        const inputData = e.inputBuffer.getChannelData(0);
-        const audioData = new Int16Array(inputData.length);
-        let sum = 0;
-
-        for (let i = 0; i < inputData.length; i++) {
-          const sample = Math.max(-1, Math.min(1, inputData[i]));
-          audioData[i] = Math.floor(sample * 32767);
-          sum += Math.abs(sample);
-        }
-
-        openAIClientRef.current?.appendInputAudio(audioData);
-      };
-
-      source.connect(processorRef.current);
-      processorRef.current.connect(audioContextRef.current.destination);
-      setIsRecording(true);
-      console.log("Audio recording started");
+      console.log("Microphone permission granted");
+      return true;
     } catch (err) {
       console.error("Error accessing microphone:", err);
       setError("Error accessing microphone. Please check your permissions.");
+      return false;
     }
   }, []);
 
   /**
-   * Stops audio recording from the user's microphone
+   * Stops speech recognition and releases microphone
    */
   const stopRecording = useCallback(() => {
-    if (processorRef.current) {
-      processorRef.current.disconnect();
-      processorRef.current = null;
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+        recognitionRef.current = null;
+      } catch (err) {
+        console.log("Error stopping recognition:", err);
+      }
     }
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
     }
     setIsRecording(false);
-    console.log("Audio recording stopped");
+    console.log("Speech recognition stopped");
   }, []);
 
   /**
@@ -360,17 +441,22 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
 
     try {
       console.log("Starting...");
+      
+      // Request microphone permission
+      const hasPermission = await requestMicrophonePermission();
+      if (!hasPermission) {
+        throw new Error("Microphone permission denied");
+      }
+      
       initializeSimliClient();
       await simliClient?.start();
       eventListenerSimli();
     } catch (error: any) {
       console.error("Error starting interaction:", error);
       setError(`Error starting interaction: ${error.message}`);
-    } finally {
-      setIsAvatarVisible(true);
       setIsLoading(false);
     }
-  }, [onStart]);
+  }, [onStart, requestMicrophonePermission]);
 
   /**
    * Handles stopping the interaction, cleaning up resources and resetting states.
@@ -382,15 +468,17 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
     stopRecording();
     setIsAvatarVisible(false);
     simliClient?.close();
-    openAIClientRef.current?.disconnect();
     if (audioContextRef.current) {
       audioContextRef.current?.close();
       audioContextRef.current = null;
     }
-    stopRecording();
+    // Clear audio chunk queue
+    audioChunkQueueRef.current = [];
+    isProcessingChunkRef.current = false;
+    isSpeakingRef.current = false;
     onClose();
     console.log("Interaction stopped");
-  }, [stopRecording]);
+  }, [stopRecording, onClose]);
 
   /**
    * Simli Event listeners
@@ -399,19 +487,21 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
     if (simliClient) {
       simliClient?.on("connected", () => {
         console.log("SimliClient connected");
-        // Initialize OpenAI client
-        initializeOpenAIClient();
+        setIsAvatarVisible(true);
+        setIsLoading(false);
+        // Initialize speech recognition
+        initializeSpeechRecognition();
       });
 
       simliClient?.on("disconnected", () => {
         console.log("SimliClient disconnected");
-        openAIClientRef.current?.disconnect();
+        stopRecording();
         if (audioContextRef.current) {
           audioContextRef.current?.close();
         }
       });
     }
-  }, []);
+  }, [initializeSpeechRecognition, stopRecording]);
 
   return (
     <>
