@@ -1,5 +1,5 @@
 // API Configuration for backend integration
-const BACKEND_MODE = process.env.NEXT_PUBLIC_BACKEND_MODE || 'DEVELOPMENT_LOCAL';
+const BACKEND_MODE = process.env.NEXT_PUBLIC_BACKEND_MODE || 'PRODUCTION';
 
 interface ApiConfig {
   baseUrl: string;
