@@ -1,11 +1,11 @@
-import IconSparkleLoader from "@/media/IconSparkleLoader";
 import React, { useCallback, useRef, useState } from "react";
 import { SimliClient } from "simli-client";
-import VideoBox from "./Components/VideoBox";
-import cn from "./utils/TailwindMergeAndClsx";
 import { getMessageUrl } from "@/src/config/api";
 import axios from "axios";
 import { createDeepgramService, DeepgramService, TranscriptionResult } from "@/src/services/deepgram";
+import EnhancedVideoBox from "./Components/EnhancedVideoBox";
+import TimingMetrics from "./Components/TimingMetrics";
+import ControlPanel from "./Components/ControlPanel";
 
 interface SimliOpenAIProps {
   simli_faceid: string;
@@ -42,6 +42,16 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
   const [error, setError] = useState("");
   const [isRecording, setIsRecording] = useState(false);
   const [userMessage, setUserMessage] = useState("...");
+  
+  // Performance timing states
+  const [timings, setTimings] = useState({
+    speechToText: 0,
+    backendResponse: 0,
+    textToSpeech: 0,
+    total: 0
+  });
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [processingStep, setProcessingStep] = useState("");
 
   // Refs for various components and states
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -208,15 +218,40 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
                 return;
               }
               
+              const startTime = Date.now();
+              setIsProcessing(true);
+              setProcessingStep("Processing your message...");
+              
               try {
                 // Send to backend
+                const backendStartTime = Date.now();
                 const responseText = await sendMessageToBackend(result.transcript);
+                const backendTime = Date.now() - backendStartTime;
+                
+                setProcessingStep("Generating response voice...");
                 
                 // Process the response
+                const ttsStartTime = Date.now();
                 await processBackendResponse(responseText);
+                const ttsTime = Date.now() - ttsStartTime;
+                
+                const totalTime = Date.now() - startTime;
+                
+                // Update timings
+                setTimings({
+                  speechToText: result.timestamp ? Date.now() - result.timestamp : 0,
+                  backendResponse: backendTime,
+                  textToSpeech: ttsTime,
+                  total: totalTime
+                });
+                
+                setIsProcessing(false);
+                setProcessingStep("");
               } catch (error) {
                 console.error("Error processing user speech:", error);
                 setError("Failed to process your message. Please try again.");
+                setIsProcessing(false);
+                setProcessingStep("");
               }
             }
           },
@@ -501,50 +536,70 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
   }, [initializeSpeechRecognition, stopRecording]);
 
   return (
-    <>
-      <div
-        className={`transition-all duration-300 ${
-          showDottedFace ? "h-0 overflow-hidden" : "h-auto"
-        }`}
-      >
-        <VideoBox video={videoRef} audio={audioRef} />
-      </div>
-      <div className="flex flex-col items-center">
-        {!isAvatarVisible ? (
-          <button
-            onClick={handleStart}
-            disabled={isLoading}
-            className={cn(
-              "w-full h-[52px] mt-4 disabled:bg-[#343434] disabled:text-white disabled:hover:rounded-[100px] bg-simliblue text-white py-3 px-6 rounded-[100px] transition-all duration-300 hover:text-black hover:bg-white hover:rounded-sm",
-              "flex justify-center items-center"
-            )}
-          >
-            {isLoading ? (
-              <IconSparkleLoader className="h-[20px] animate-loader" />
-            ) : (
-              <span className="font-abc-repro-mono font-bold w-[164px]">
-                Start
-              </span>
-            )}
-          </button>
-        ) : (
-          <>
-            <div className="flex items-center gap-4 w-full">
-              <button
-                onClick={handleStop}
-                className={cn(
-                  "mt-4 group text-white flex-grow bg-red hover:rounded-sm hover:bg-white h-[52px] px-6 rounded-[100px] transition-all duration-300"
-                )}
-              >
-                <span className="font-abc-repro-mono group-hover:text-black font-bold w-[164px] transition-all duration-300">
-                  Stop
-                </span>
-              </button>
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900 p-4 md:p-8">
+      <div className="max-w-5xl mx-auto space-y-6">
+        {/* Header */}
+        <div className="text-center space-y-3">
+          <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
+            AI Avatar Chat
+          </h1>
+          <p className="text-gray-300 text-base md:text-lg max-w-xl mx-auto">
+            Experience the future of conversation with our intelligent AI avatar
+          </p>
+        </div>
+
+        {/* Enhanced Video Display */}
+        <div className="flex justify-center">
+          <EnhancedVideoBox
+            video={videoRef}
+            audio={audioRef}
+            isAvatarVisible={isAvatarVisible}
+            isRecording={isRecording}
+            userMessage={userMessage}
+            showDottedFace={showDottedFace}
+          />
+        </div>
+
+        {/* Performance Metrics */}
+        <div className="flex justify-center">
+          <TimingMetrics
+            timings={timings}
+            isProcessing={isProcessing}
+            processingStep={processingStep}
+            isRecording={isRecording}
+          />
+        </div>
+
+        {/* Control Panel */}
+        <div className="flex justify-center">
+          <ControlPanel
+            isAvatarVisible={isAvatarVisible}
+            isLoading={isLoading}
+            onStart={handleStart}
+            onStop={handleStop}
+            error={error}
+          />
+        </div>
+
+        {/* Footer Info */}
+        <div className="text-center space-y-3 pt-6 border-t border-gray-700/50">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs text-gray-400">
+            <div className="space-y-1">
+              <div className="font-semibold text-blue-400">Voice Recognition</div>
+              <div>Deepgram real-time transcription</div>
             </div>
-          </>
-        )}
+            <div className="space-y-1">
+              <div className="font-semibold text-green-400">AI Processing</div>
+              <div>Advanced language model</div>
+            </div>
+            <div className="space-y-1">
+              <div className="font-semibold text-purple-400">Voice Synthesis</div>
+              <div>OpenAI TTS generation</div>
+            </div>
+          </div>
+        </div>
       </div>
-    </>
+    </div>
   );
 };
 

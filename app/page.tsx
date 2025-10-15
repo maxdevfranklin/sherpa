@@ -5,6 +5,7 @@ import DottedFace from "./Components/DottedFace";
 import SimliHeaderLogo from "./Components/Logo";
 import Image from "next/image";
 import GitHubLogo from "@/media/github-mark-white.svg";
+import "./avatar-effects.css";
 
 interface avatarSettings {
   name: string;
@@ -38,50 +39,51 @@ const Demo: React.FC = () => {
   const onClose = () => setShowDottedFace(true);
 
   return (
-    <div className="bg-black min-h-screen w-full flex flex-col items-center text-white font-abc-repro p-6">
-      <SimliHeaderLogo />
-
-      <div className="absolute top-8 right-8">
-        {/* Optional GitHub link */}
-        {/* 
-        <span
-          onClick={() => window.open("https://github.com/simliai/create-simli-app-openai")}
-          className="cursor-pointer font-semibold text-base hover:underline"
-        >
-          <Image className="w-[20px] inline mr-2" src={GitHubLogo} alt="GitHub" />
-          create-simli-app
-        </span>
-        */}
+    <div className="relative">
+      {/* Background Pattern */}
+      <div className="fixed inset-0 bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900">
+        <div className="absolute inset-0 opacity-20" style={{
+          backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%239C92AC' fill-opacity='0.05'%3E%3Ccircle cx='30' cy='30' r='1'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`
+        }}></div>
       </div>
 
-      <div className="flex flex-col items-center gap-6 bg-white/10 border border-white/20 shadow-lg backdrop-blur-sm p-8 rounded-2xl w-full max-w-3xl mt-10">
-        {showDottedFace && <DottedFace />}
-        <SimliOpenAI
-          openai_voice={avatar.openai_voice}
-          openai_model={avatar.openai_model}
-          simli_faceid={avatar.simli_faceid}
-          initialPrompt={avatar.initialPrompt}
-          onStart={onStart}
-          onClose={onClose}
-          showDottedFace={showDottedFace}
-        />
-      </div>
-
-      <div className="mt-10 text-center max-w-sm text-sm">
-        <h2 className="text-lg font-bold mb-2">I am Sherpa</h2>
-        <ul className="list-disc list-inside space-y-2 text-white/90">
-          <li>
-            I will guide the family through one of the most important journeys
-            of their life.
-          </li>
-          <li>
-            I am ready to provide the insights, support, and confidence you need
-            to take the next step.
-          </li>
-        </ul>
-        <p className="mt-4 text-white/70 italic">
-          Let’s start a meaningful conversation.
-        </p>
+      {/* Content */}
+      <div className="relative z-10">
+        {showDottedFace ? (
+          <div className="min-h-screen flex flex-col items-center justify-center text-white font-abc-repro p-6">
+            <SimliHeaderLogo />
+            
+            <div className="flex flex-col items-center gap-6 bg-white/5 border border-white/10 shadow-2xl backdrop-blur-md p-8 rounded-3xl w-full max-w-4xl mt-10">
+              <DottedFace />
+              <div className="text-center space-y-4">
+                <h2 className="text-2xl font-bold gradient-text">I am Sherpa</h2>
+                <p className="text-lg text-white/80 max-w-2xl">
+                  Your trusted guide through one of life's most important journeys. 
+                  I'm here to provide insights, support, and confidence as you explore 
+                  senior living options.
+                </p>
+                <div className="flex justify-center">
+                  <button
+                    onClick={onStart}
+                    className="modern-button px-8 py-4 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-semibold rounded-2xl transition-all duration-300 transform hover:scale-105 shadow-lg"
+                  >
+                    Start Conversation
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <SimliOpenAI
+            openai_voice={avatar.openai_voice}
+            openai_model={avatar.openai_model}
+            simli_faceid={avatar.simli_faceid}
+            initialPrompt={avatar.initialPrompt}
+            onStart={onStart}
+            onClose={onClose}
+            showDottedFace={showDottedFace}
+          />
+        )}
       </div>
     </div>
   );
